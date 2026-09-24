@@ -289,21 +289,21 @@ function loadTasks(){
   loadCache();
   sb.from("tasks").select("*").then(function(r){
     if(r.error){ setSync(false); return; }
-    tasks=(r.data||[]).map(function(o){ return {id:o.id,title:o.title,done:!!o.done,due:o.due||"",category:o.category||"",priority:o.priority||"media",notes:o.notes||"",created_at:o.created_at||0}; });
+    tasks=(r.data||[]).map(function(o){ return {id:o.id,title:o.title,done:!!o.done,due:o.due||"",category:o.category||"",priority:o.priority||"media",notes:o.notes||"",created_at:o.created_at||0,completed_at:o.completed_at||null}; });
     saveCache(); render(); setSync(true);
   });
 }
 function setSync(ok){ document.getElementById("sync").innerHTML=ok?'Sincronizado na nuvem <b>✓</b>':'Offline (mudanças salvam ao reconectar)'; }
 
 function addTask(o){
-  var t={id:uid(),title:o.title,done:false,due:o.due||"",category:(o.category||"").trim().toLowerCase(),priority:o.priority||"media",notes:"",created_at:Date.now()};
+  var t={id:uid(),title:o.title,done:false,due:o.due||"",category:(o.category||"").trim().toLowerCase(),priority:o.priority||"media",notes:"",created_at:Date.now(),completed_at:null};
   tasks.push(t); saveCache(); render();
   sb.from("tasks").insert({id:t.id,title:t.title,done:false,due:t.due,category:t.category,priority:t.priority,notes:"",created_at:t.created_at}).then(function(r){ if(r.error)setSync(false); });
 }
 function toggle(id){
   var t=tasks.find(function(x){return x.id===id;}); if(!t)return;
-  t.done=!t.done; saveCache(); render();
-  sb.from("tasks").update({done:t.done}).eq("id",id).then(function(r){ if(r.error)setSync(false); });
+  t.done=!t.done; t.completed_at=t.done?Date.now():null; saveCache(); render();
+  sb.from("tasks").update({done:t.done,completed_at:t.completed_at}).eq("id",id).then(function(r){ if(r.error)setSync(false); });
 }
 function saveEdit(id,o){
   var t=tasks.find(function(x){return x.id===id;}); if(!t)return;
@@ -324,6 +324,7 @@ function startOfDay(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()
 function pad(n){ return (n<10?"0":"")+n; }
 function parseIso(s){ if(!s)return null; var p=s.split("-"); return new Date(+p[0],+p[1]-1,+p[2]); }
 function diffDays(due){ if(!due)return null; var t=startOfDay(new Date()); var d=parseIso(due); return Math.round((d-t)/86400000); }
+function isToday(ts){ if(!ts)return false; return startOfDay(new Date(ts)).getTime()===startOfDay(new Date()).getTime(); }
 function bucketOf(t){ if(!t.due)return "semdata"; var n=diffDays(t.due); if(n<0)return "atrasada"; if(n===0)return "hoje"; if(n===1)return "amanha"; if(n<=7)return "semana"; return "depois"; }
 function dueLabel(t){
   if(!t.due)return {txt:"",cls:"mut"};
@@ -384,10 +385,28 @@ function render(){
     arr.forEach(function(t){ gd.appendChild(taskEl(t)); }); host.appendChild(gd);
   });
   if(done.length){
-    done.sort(function(a,b){return b.created_at-a.created_at;});
-    var d=document.createElement("details"); d.className="cdone";
-    var sum=document.createElement("summary"); sum.innerHTML="Concluídas <span class='n'>"+done.length+"</span>"; d.appendChild(sum);
-    done.forEach(function(t){ d.appendChild(taskEl(t)); }); host.appendChild(d);
+    var todayD=done.filter(function(t){return isToday(t.completed_at);});
+    var olderD=done.filter(function(t){return !isToday(t.completed_at);});
+    if(todayD.length){
+      var dh=document.createElement("details"); dh.className="cdone";
+      var sh=document.createElement("summary"); sh.innerHTML="✓ "+todayD.length+" concluída"+(todayD.length>1?"s":"")+" hoje 💪"; dh.appendChild(sh);
+      todayD.sort(function(a,b){return (b.completed_at||0)-(a.completed_at||0);});
+      todayD.forEach(function(t){ dh.appendChild(taskEl(t)); }); host.appendChild(dh);
+    }
+    if(olderD.length){
+      var dg=document.createElement("details"); dg.className="cdone";
+      var sg=document.createElement("summary"); sg.innerHTML="Ver histórico completo <span class='n'>"+olderD.length+"</span>"; dg.appendChild(sg);
+      var byDay={};
+      olderD.forEach(function(t){ var ts=t.completed_at||t.created_at||0; var dd=new Date(ts); var key=dd.getFullYear()+"-"+pad(dd.getMonth()+1)+"-"+pad(dd.getDate()); (byDay[key]=byDay[key]||[]).push(t); });
+      Object.keys(byDay).sort().reverse().forEach(function(key){
+        var p=key.split("-"), lbl=p[2]+"/"+p[1]+"/"+p[0];
+        var gh=document.createElement("div"); gh.className="ghead"; gh.style.marginTop="14px"; gh.innerHTML=lbl+' <span class="n">'+byDay[key].length+'</span>';
+        dg.appendChild(gh);
+        byDay[key].sort(function(a,b){return (b.completed_at||b.created_at||0)-(a.completed_at||a.created_at||0);});
+        byDay[key].forEach(function(t){ dg.appendChild(taskEl(t)); });
+      });
+      host.appendChild(dg);
+    }
   }
 }
 function taskEl(t){
