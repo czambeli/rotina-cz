@@ -41,7 +41,7 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{background:var(--bg);color:var(--ink);}
   body{font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased;
-    padding:max(22px,env(safe-area-inset-top)) 16px 80px;min-height:100vh;}
+    padding:calc(max(env(safe-area-inset-top),44px) + 12px) 16px 80px;min-height:100vh;}
   .app{max-width:600px;margin:0 auto;}
   .tnum{font-variant-numeric:tabular-nums;}
   [hidden]{display:none!important;}
